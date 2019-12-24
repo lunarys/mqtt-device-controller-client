@@ -83,9 +83,9 @@ fn main() {
         parser.refer(&mut config.start)
             .add_option(&["-p", "--passive", "--no-start"], StoreTrue, "Only check if the device is available, do not start it");
         parser.refer(&mut config.topic_sub)
-            .add_option(&["--topic-sub"], StoreOption, "Topic used for subscribing to messages from the controller (default=device/$device/save/$user/status)");
+            .add_option(&["--topic-sub"], StoreOption, "Topic used for subscribing to messages from the controller (default=device/$device/controller/to/$user)");
         parser.refer(&mut config.topic_pub)
-            .add_option(&["--topic-pub"], StoreOption, "Topic used for publishing messages to the controller (default=device/$device/save/$user/status/desired)");
+            .add_option(&["--topic-pub"], StoreOption, "Topic used for publishing messages to the controller (default=device/$device/controller/from/$user)");
         parser.refer(&mut mqtt_config.qos)
             .add_option(&["-q", "--qos"], Store, "Quallity of service for the communication with the mqtt broker (default=1)");
         parser.parse_args_or_exit();
@@ -216,15 +216,13 @@ fn wait_for_message(receiver: &Receiver<Option<mqtt::Message>>, timeout: Duratio
 fn get_topic_sub(config: &Configuration, mqtt_config: &MqttConfiguration) -> String {
     config.topic_sub.clone().unwrap_or("device/".to_string()
         .add(&config.device)
-        .add("/save/")
-        .add(&mqtt_config.user)
-        .add("/status"))
+        .add("/controller/to/")
+        .add(&mqtt_config.user))
 }
 
 fn get_topic_pub(config: &Configuration, mqtt_config: &MqttConfiguration) -> String {
     config.topic_pub.clone().unwrap_or("device/".to_string()
         .add(&config.device)
-        .add("/save/")
-        .add(&mqtt_config.user)
-        .add("/status/desired"))
+        .add("/controller/from/")
+        .add(&mqtt_config.user))
 }
