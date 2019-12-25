@@ -176,7 +176,11 @@ fn get_client(config: &Configuration, mqtt_config: &MqttConfiguration) -> Result
 
     //options.connect_timeout()
     //options.automatic_reconnect()
-    //options.will_message()
+
+    // Set last will in case of whatever failure that includes a interrupted connection
+    let testament_topic = get_topic_pub(config, mqtt_config);
+    let testament = mqtt::Message::new(testament_topic, "ABORT", mqtt_config.qos);
+    options.will_message(testament);
 
     let topic_sub = get_topic_sub(&config, &mqtt_config);
     let qos = mqtt_config.qos;
