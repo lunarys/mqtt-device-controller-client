@@ -81,7 +81,7 @@ fn main() {
         parser.refer(&mut config.timeout)
             .add_option(&["-t", "--timeout"], Store, "Time to wait for a message from the controller (default=600)");
         parser.refer(&mut config.start)
-            .add_option(&["-p", "--passive", "--no-start"], StoreTrue, "Only check if the device is available, do not start it");
+            .add_option(&["--passive", "--no-start"], StoreTrue, "Only check if the device is available, do not start it");
         parser.refer(&mut config.topic_sub)
             .add_option(&["--topic-sub"], StoreOption, "Topic used for subscribing to messages from the controller (default=device/$device/controller/to/$user)");
         parser.refer(&mut config.topic_pub)
@@ -92,8 +92,8 @@ fn main() {
     }
 
     let result = match operation.as_str() {
-        "begin" => start_backup(&config, &mqtt_config),
-        "end" => end_backup(&config, &mqtt_config),
+        "begin" => start_device(&config, &mqtt_config),
+        "end" => stop_device(&config, &mqtt_config),
         _ => Err(format!("Unknown operation: '{}', expected 'begin' or 'end'", operation))
     };
 
@@ -111,39 +111,75 @@ fn main() {
     }
 }
 
-fn start_backup(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
+fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
+    fn start_helper(config: &Configuration, client: &mqtt::Client, receiver: &Receiver<Option<mqtt::Message>>, topic: &str, qos: i32) -> Result<bool,String> {
+        let msg = mqtt::Message::new(topic, if config.start { "START_BOOT" } else { "START_RUN" }, qos);
+        if client.publish(msg).is_err() {
+            return Err("Could not send start initiation message".to_string());
+        } else {
+            println!("Sent initiation message to controller, waiting for reply...");
+        }
+
+        let timeout = Duration::new(config.timeout, 0);
+        let received: String = wait_for_message(receiver, timeout, None)?;
+
+        if received.to_lowercase().eq("disabled") {
+            println!("Device '{}' is currently disabled for sync", config.device);
+            return Ok(false);
+        }
+
+        // Device is already online
+        if received.to_lowercase().eq("ready") {
+            return Ok(true);
+        }
+
+        // Check only, do not boot, and device is offline
+        if received.to_lowercase().eq("off") {
+            return Ok(false);
+        }
+
+        // Wait until device is started
+        if !(received.to_lowercase().eq("wait")) {
+            return Err(format!("Expected to receive 'WAIT', but received '{}'", received));
+        }
+
+        // Second message should be CHECK
+        let timeout2 = Duration::new(config.timeout, 0);
+        let received2 = wait_for_message(receiver, timeout2, None)?;
+
+        // Wait for check from controller to confirm still waiting
+        if received2.to_lowercase().eq("check") {
+            let msg = mqtt::Message::new(topic, "STILL_WAITING", qos);
+            if client.publish(msg).is_err() {
+                return Err(String::from("Could not send confirmation for still waiting"));
+            }
+        } else {
+            return Err(format!("Expected to receive 'CHECK', but received '{}'", received2));
+        }
+
+        // Third message should just be confirmation with READY
+        let timeout3 = Duration::new(config.timeout, 0);
+        let received3 = wait_for_message(receiver, timeout3, None)?;
+
+        // Return wether device is available or not
+        return Ok(received3.to_lowercase().eq("ready"))
+    };
+
     let qos = mqtt_config.qos;
     let topic_pub = get_topic_pub(&config, &mqtt_config);
     let (client,receiver) : (mqtt::Client,Receiver<Option<mqtt::Message>>) =
         try_result!(get_client(&config, &mqtt_config), "Could not create mqtt client and receiver");
 
-    let msg = mqtt::Message::new(topic_pub, if config.start { "START_BOOT" } else { "START_RUN" }, qos);
-    if client.publish(msg).is_err() {
-        return Err("Could not send start initiation message".to_string());
-    } else {
-        println!("Sent initiation message to controller, waiting for reply...");
-    }
-
-    let timeout = Duration::new(config.timeout, 0);
-    let received: String = wait_for_message(&receiver, timeout, None)?;
-
-    let result = match received.to_lowercase().as_str() {
-        "ready" => true,
-        "disabled" => {
-            println!("Device '{}' is currently disabled for sync", config.device);
-            false
-        },
-        _ => false
-    };
+    let result = start_helper(config, &client, &receiver, topic_pub.as_str(), qos);
 
     if client.disconnect(None).is_err() {
         println!("Error while disconnecting from mqtt broker");
     }
 
-    return Ok(result);
+    return result;
 }
 
-fn end_backup(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
+fn stop_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
     let qos = mqtt_config.qos;
     let topic_pub = get_topic_pub(&config, &mqtt_config);
     let (client,_) : (mqtt::Client,Receiver<Option<mqtt::Message>>) =
