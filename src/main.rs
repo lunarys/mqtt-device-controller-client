@@ -111,6 +111,24 @@ fn main() {
     }
 }
 
+fn get_controller_state(client: &mqtt::Client, receiver: &Receiver<Option<mqtt::Message>>, config: &Configuration, qos: i32) -> Result<bool, String> {
+    let topic = get_controller_state_topic(config);
+
+    // Subscribe to state topic
+    try_result!(client.subscribe(topic.as_str(), qos), "Could not subscribe to controller state topic");
+
+    // 10 seconds should be more than enough, as the state is retained
+    let wait_time = Duration::new(10,0);
+    // Wait for a result
+    let result_string = wait_for_message(receiver, Some(topic.as_str()), wait_time, None)?;
+    let result = result_string.to_uppercase() == "ENABLED";
+
+    // Unsubscribe from state topic
+    try_result!(client.unsubscribe(topic.as_str()), "Could not unsubscribe from controller state topic");
+
+    return Ok(result);
+}
+
 fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
     fn start_helper(config: &Configuration, client: &mqtt::Client, receiver: &Receiver<Option<mqtt::Message>>, topic: &str, qos: i32) -> Result<bool,String> {
         let msg = mqtt::Message::new(topic, if config.start { "START_BOOT" } else { "START_RUN" }, qos);
@@ -121,7 +139,7 @@ fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Res
         }
 
         let timeout = Duration::new(config.timeout, 0);
-        let received: String = wait_for_message(receiver, timeout, None)?;
+        let received: String = wait_for_message(receiver, None, timeout, None)?;
 
         if received.to_lowercase().eq("disabled") {
             println!("Device '{}' is currently disabled for sync", config.device);
@@ -145,7 +163,7 @@ fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Res
 
         // Second message should be CHECK
         let timeout2 = Duration::new(config.timeout, 0);
-        let received2 = wait_for_message(receiver, timeout2, None)?;
+        let received2 = wait_for_message(receiver, None, timeout2, None)?;
 
         // Wait for check from controller to confirm still waiting
         if received2.to_lowercase().eq("check") {
@@ -159,7 +177,7 @@ fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Res
 
         // Third message should just be confirmation with READY
         let timeout3 = Duration::new(config.timeout, 0);
-        let received3 = wait_for_message(receiver, timeout3, None)?;
+        let received3 = wait_for_message(receiver, None, timeout3, None)?;
 
         // Return wether device is available or not
         return Ok(received3.to_lowercase().eq("ready"))
@@ -169,6 +187,12 @@ fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Res
     let topic_pub = get_topic_pub(&config, &mqtt_config);
     let (client,receiver) : (mqtt::Client,Receiver<Option<mqtt::Message>>) =
         try_result!(get_client(&config, &mqtt_config), "Could not create mqtt client and receiver");
+
+    let is_controller_online = get_controller_state(&client, &receiver, &config, mqtt_config.qos)?;
+    if !is_controller_online {
+        println!("Controller for '{}' is not available", config.device.as_str());
+        return Ok(false);
+    }
 
     let result = start_helper(config, &client, &receiver, topic_pub.as_str(), qos);
 
@@ -182,8 +206,14 @@ fn start_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Res
 fn stop_device(config : &Configuration, mqtt_config: &MqttConfiguration) -> Result<bool, String> {
     let qos = mqtt_config.qos;
     let topic_pub = get_topic_pub(&config, &mqtt_config);
-    let (client,_) : (mqtt::Client,Receiver<Option<mqtt::Message>>) =
+    let (client,receiver) : (mqtt::Client,Receiver<Option<mqtt::Message>>) =
         try_result!(get_client(&config, &mqtt_config), "Could not create mqtt client and receiver");
+
+    let is_controller_online = get_controller_state(&client, &receiver, &config, mqtt_config.qos)?;
+    if !is_controller_online {
+        println!("Controller for '{}' is not available", config.device.as_str());
+        return Ok(false);
+    }
 
     let msg = mqtt::Message::new(topic_pub, "DONE", qos);
     let result = if client.publish(msg).is_ok() {
@@ -229,7 +259,7 @@ fn get_client(config: &Configuration, mqtt_config: &MqttConfiguration) -> Result
     Ok((client, receiver))
 }
 
-fn wait_for_message(receiver: &Receiver<Option<mqtt::Message>>, timeout: Duration, expected: Option<String>) -> Result<String, String> {
+fn wait_for_message(receiver: &Receiver<Option<mqtt::Message>>, on_topic: Option<&str>, timeout: Duration, expected: Option<String>) -> Result<String, String> {
     let start_time = Instant::now();
 
     loop {
@@ -239,6 +269,12 @@ fn wait_for_message(receiver: &Receiver<Option<mqtt::Message>>, timeout: Duratio
         // TODO: What was this again?
         let received_message: mqtt::Message = try_option!(received, "Timeout on receive operation");
         // TODO: Reconnect on connection loss
+
+        if let Some(expected_topic) = on_topic {
+            if received_message.topic() != expected_topic {
+                continue;
+            }
+        }
 
         let received_string = received_message.payload_str().to_string();
         if expected.is_some() {
@@ -265,4 +301,8 @@ fn get_topic_pub(config: &Configuration, mqtt_config: &MqttConfiguration) -> Str
         .add(&config.device)
         .add("/controller/from/")
         .add(&mqtt_config.user))
+}
+
+fn get_controller_state_topic(config: &Configuration) -> String {
+    return format!("device/{}/controller/status", config.device);
 }
