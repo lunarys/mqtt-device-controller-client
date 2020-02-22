@@ -98,7 +98,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "mqtt-controller-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argparse 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "paho-mqtt 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
