@@ -8,6 +8,7 @@ This interacts with the [MQTT device controller](https://github.com/lunarys/mqtt
 `./mqtt-controller-client <begin|end> [options]`
 
 Options:
+
 | Name | Default | Required | Description |
 |------|---------|----------|-------------|
 | -d, --device | | yes | The name of the device to start. Used in the default MQTT topics. |
