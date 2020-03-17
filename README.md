@@ -9,6 +9,7 @@ This interacts with the [MQTT device controller](https://github.com/lunarys/mqtt
 
 Options:
 | Name | Default | Required | Description |
+|------|---------|----------|-------------|
 | -d, --device | | yes | The name of the device to start. Used in the default MQTT topics. |
 | -h, --host | | yes | The host of the MQTT broker. |
 | -p, --port | 1883 | no | The port of the MQTT broker. |
