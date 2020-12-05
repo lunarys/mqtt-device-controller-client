@@ -63,7 +63,7 @@ fn main() {
         let mut parser = ArgumentParser::new();
         parser.set_description("Client to interact with a MQTT device controller");
         parser.refer(&mut operation)
-            .add_argument("operation", Store, "Operation to perform")
+            .add_argument("operation", Store, "Operation to perform ('begin' or 'end')")
             .required();
         parser.refer(&mut config.device)
             .add_option(&["-d", "--device"], Store, "Name of the device to start")
