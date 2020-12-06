@@ -9,19 +9,28 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  publish:
+    name: Publish for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: mqtt-controller-client
+            asset_name: mqtt-controller-client-linux-amd64
+          - os: windows-latest
+            artifact_name: mqtt-controller-client.exe
+            asset_name: mqtt-controller-client-windows-amd64
 
     steps:
-    - uses: actions/checkout@v2
-      
-    - name: Build
-      run: cargo build --verbose --release
-      
-    - uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        prerelease: false
-        files: |
-          LICENSE
-          target/release/mqtt-controller-client
+      - uses: actions/checkout@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/release/${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.asset_name }}
+          tag: ${{ github.ref }}
