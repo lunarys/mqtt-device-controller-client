@@ -1,6 +1,6 @@
 extern crate argparse;
 
-use argparse::{ArgumentParser, StoreTrue, Store, StoreOption};
+use argparse::{ArgumentParser, Store, StoreOption, StoreFalse};
 use paho_mqtt as mqtt;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
@@ -81,7 +81,7 @@ fn main() {
         parser.refer(&mut config.timeout)
             .add_option(&["-t", "--timeout"], Store, "Time to wait for a message from the controller (default=600)");
         parser.refer(&mut config.start)
-            .add_option(&["--passive", "--no-start"], StoreTrue, "Only check if the device is available, do not start it");
+            .add_option(&["--passive", "--no-start"], StoreFalse, "Only check if the device is available, do not start it");
         parser.refer(&mut config.topic_sub)
             .add_option(&["--topic-sub"], StoreOption, "Topic used for subscribing to messages from the controller (default=device/$device/controller/to/$user)");
         parser.refer(&mut config.topic_pub)
